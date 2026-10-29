@@ -47,6 +47,6 @@ export interface SavedRelic {
   title: string;
   language: Language;
   code: string;
-  result: AnalysisResult;
+  result: AnalysisResult | null;
   savedAt: string;
 }

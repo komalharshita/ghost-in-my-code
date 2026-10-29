@@ -90,7 +90,7 @@ function Index() {
   function openSave() { setSaveTitle(title || "Untitled relic"); setSaveOpen(true); }
   function confirmSave() {
     const r = result && resultCode === code ? result : null;
-    const relic: SavedRelic = { id: crypto.randomUUID(), title: saveTitle.trim().slice(0, MAX_TITLE_CHARS) || "Untitled relic", language, code, result: r as AnalysisResult, savedAt: new Date().toISOString() };
+    const relic: SavedRelic = { id: crypto.randomUUID(), title: saveTitle.trim().slice(0, MAX_TITLE_CHARS) || "Untitled relic", language, code, result: r, savedAt: new Date().toISOString() };
     persist([relic, ...relics], "Relic saved to this browser"); setSaveOpen(false);
   }
   function reopen(r: SavedRelic) { setCode(r.code); setLanguage(r.language); setTitle(r.title); if (r.result) { setResult(r.result); setResultCode(r.code); setResultLang(r.language); } go("workspace"); }
