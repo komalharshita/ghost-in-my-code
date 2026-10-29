@@ -5,4 +5,5 @@
 - [x] Sample Relics / Saved (rename, delete, clear) / About views
 - [x] Responsive (tablet/mobile menu)
 - [x] Verify end-to-end + tests
+- [x] Shared relic database + public gallery page
 - [ ] Open-weight Gemma key (blocked: user must add OPEN_MODEL_API_KEY)

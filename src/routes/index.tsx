@@ -25,7 +25,7 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  validateSearch: (s: Record<string, unknown>): { relic?: string } => (typeof s.relic === "string" ? { relic: s.relic } : {}),
+  validateSearch: (s: Record<string, unknown>): { relic?: string } => (typeof s["relic"] === "string" ? { relic: s["relic"] } : {}),
   component: Index,
 });
 
