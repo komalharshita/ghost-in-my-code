@@ -14,13 +14,46 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      relics: {
+        Row: {
+          code: string
+          created_at: string
+          edit_token: string
+          id: string
+          language: string
+          result: Json | null
+          title: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          edit_token: string
+          id?: string
+          language: string
+          result?: Json | null
+          title: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          edit_token?: string
+          id?: string
+          language?: string
+          result?: Json | null
+          title?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      delete_relic: { Args: { _id: string; _token: string }; Returns: boolean }
+      rename_relic: {
+        Args: { _id: string; _title: string; _token: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
