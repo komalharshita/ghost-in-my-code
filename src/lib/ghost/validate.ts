@@ -4,7 +4,9 @@ const str = (v: unknown, max = 4000): string =>
   typeof v === "string" ? v.slice(0, max) : v == null ? "" : String(v).slice(0, max);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v.slice(0, 40) : []);
 const strArr = (v: unknown) => arr(v).map((x) => (typeof x === "string" ? x : JSON.stringify(x))).filter(Boolean).map((s) => s.slice(0, 1000));
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : { text: v });
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Loose = any;
+const obj = (v: unknown): Loose => (v && typeof v === "object" ? v : { text: v });
 
 /** Extract the first JSON object from a model reply (handles ``` fences and stray prose). */
 export function extractJson(text: string): unknown {
@@ -18,7 +20,7 @@ export function extractJson(text: string): unknown {
 /** Coerce untrusted model output into a Report; throws if the core fields are missing. */
 export function validateReport(raw: unknown): Report {
   if (!raw || typeof raw !== "object") throw new Error("Report is not an object");
-  const r = raw as Record<string, unknown>;
+  const r = raw as Loose;
   const summary = str(r.summary);
   if (!summary.trim()) throw new Error("Report is missing a summary");
   const sev = (s: unknown) => (s === "high" || s === "medium" ? s : "low") as "low" | "medium" | "high";

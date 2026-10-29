@@ -37,7 +37,7 @@ export function runDeterministic(code: string, language: Language) {
     for (const line of lines) {
       if (!line.trim()) continue;
       const indent = line.length - line.trimStart().length;
-      while (stack.length && indent <= stack[stack.length - 1]) stack.pop();
+      while (stack.length && indent <= stack[stack.length - 1]!) stack.pop();
       if (/^\s*(for|while)\b/.test(line)) { stack.push(indent); maxNesting = Math.max(maxNesting, stack.length); }
     }
   } else {

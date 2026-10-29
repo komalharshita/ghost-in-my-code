@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { LANGUAGES, MAX_CODE_CHARS, MAX_TITLE_CHARS, type AnalysisResult, type Language } from "./types";
 
-export interface AnalyzeInput { code: string; language: Language; title?: string }
+export interface AnalyzeInput { code: string; language: Language; title?: string | undefined }
 export type AnalyzeResponse =
   | { ok: true; result: AnalysisResult }
   | { ok: false; error: string; code: "invalid" | "not_configured" | "rate_limited" | "provider" | "malformed" };
