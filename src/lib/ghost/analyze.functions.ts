@@ -144,7 +144,7 @@ export const analyzeCode = createServerFn({ method: "POST" })
       const status = (e as { status?: number }).status;
       console.error(`[analyze] provider failure status=${status ?? "network"}`);
       if (status === 429) return { ok: false, code: "rate_limited", error: "The AI provider is rate-limiting requests. Wait a minute and retry." };
-      if (status === 402) return { ok: false, code: "provider", error: "AI credits are exhausted for this workspace. Top up credits or configure OPEN_MODEL_API_KEY." };
+      if (status === 402) return { ok: false, code: "provider", error: p.lovable ? "AI credits are exhausted for this workspace. Top up credits or configure OPEN_MODEL_API_KEY." : `${p.name} reports no remaining credits for this account. Add credits with the provider, then retry.` };
       if (status === 401 || status === 403) return { ok: false, code: "provider", error: "The AI provider rejected the credentials or model access. Check the API key and model permissions." };
       return { ok: false, code: "provider", error: "The AI provider is unavailable right now. Please retry shortly." };
     }
