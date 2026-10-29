@@ -118,6 +118,7 @@ function Index() {
               <button key={n.id} onClick={() => go(n.id)} aria-current={view === n.id ? "page" : undefined}
                 className={`${label} relative px-3 py-5 transition hover:text-foreground ${view === n.id ? "text-primary after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:bg-primary after:shadow-[0_0_8px_var(--primary)]" : "text-muted-foreground"}`}>{n.name}</button>
             ))}
+            <Link to="/gallery" className={`${label} px-3 py-5 text-muted-foreground transition hover:text-foreground`}>Gallery</Link>
             <span className={`${label} ml-5 flex items-center gap-1.5 text-primary`}><span className="size-1.5 animate-pulse rounded-full bg-primary" />System online</span>
             <a href="#repo" onClick={(e) => { e.preventDefault(); go("about"); }} className="ml-4 text-muted-foreground hover:text-primary" aria-label="Source repository (see About)"><Github className="size-4" /></a>
           </nav>
@@ -125,6 +126,7 @@ function Index() {
           {menu && (
             <div className="absolute inset-x-0 top-full z-40 border-b bg-card p-2 md:hidden">
               {NAV.map((n) => <button key={n.id} onClick={() => go(n.id)} className={`${label} block w-full rounded px-3 py-3 text-left ${view === n.id ? "bg-elevated text-primary" : "text-muted-foreground"}`}>{n.name}</button>)}
+              <Link to="/gallery" className={`${label} block w-full rounded px-3 py-3 text-left text-muted-foreground`}>Gallery</Link>
               <p className={`${label} flex items-center gap-1.5 px-3 py-2 text-primary`}><span className="size-1.5 rounded-full bg-primary" />System online</p>
             </div>
           )}
@@ -274,7 +276,7 @@ function Index() {
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle className="font-mono text-sm uppercase tracking-widest">Save relic</DialogTitle>
-            <DialogDescription>{result && resultCode === code ? "Saves the code and its current report to this browser." : "Saves the code only — analyze it first to include a report."}</DialogDescription></DialogHeader>
+            <DialogDescription>{result && resultCode === code ? "Saves the code and its report to the public gallery — anyone can view it." : "Saves the code only to the public gallery — analyze it first to include a report."}</DialogDescription></DialogHeader>
           <label htmlFor="save-title" className={`${label} text-muted-foreground`}>Title</label>
           <input id="save-title" autoFocus maxLength={MAX_TITLE_CHARS} value={saveTitle} onChange={(e) => setSaveTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmSave()} className="w-full rounded-md border bg-panel px-3 py-2 font-mono text-sm outline-none focus:border-primary" />
           <DialogFooter><button onClick={confirmSave} className={`${label} rounded-md bg-primary px-4 py-2.5 font-bold text-primary-foreground`}>Save</button></DialogFooter>
