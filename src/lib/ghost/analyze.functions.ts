@@ -33,7 +33,7 @@ function resolveProvider(): Provider | null {
   }
   // Fallback: Lovable AI Gateway (NOT open-weight). Clearly labeled in the UI.
   const lk = process.env["LOVABLE_API_KEY"];
-  if (lk) return { name: "Lovable AI Gateway", url: "https://ai.gateway.lovable.dev/v1/chat/completions", key: lk, model: "google/gemini-3-flash-preview", openWeight: false, lovable: true };
+  if (lk) return { name: "Lovable AI Gateway", url: "https://ai.gateway.lovable.dev/v1/chat/completions", key: lk, model: "openai/gpt-6-astra", openWeight: false, lovable: true };
   return null;
 }
 
@@ -75,7 +75,7 @@ async function callModel(p: Provider, messages: { role: string; content: string 
   const res = await fetch(p.url, {
     method: "POST",
     headers,
-    body: JSON.stringify({ model: p.model, messages, stream: true, max_tokens: 4096, ...(p.lovable ? { response_format: { type: "json_object" } } : { temperature: 0.3 }) }),
+    body: JSON.stringify({ model: p.model, messages, stream: true, ...(p.lovable ? { reasoning_effort: "low", max_completion_tokens: 8000, response_format: { type: "json_object" } } : { max_tokens: 4096, temperature: 0.3 }) }),
   });
   if (!res.ok || !res.body) {
     const status = res.status;
