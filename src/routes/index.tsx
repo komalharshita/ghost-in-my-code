@@ -132,17 +132,17 @@ function Index() {
             <section className="flex flex-col gap-5 pt-10 pb-7 sm:pt-12 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p className={`${label} text-green-2`}>Digital archaeology lab / 001</p>
-                <h1 className="mt-3 text-[32px] font-semibold leading-tight tracking-tight sm:text-[34px]">Your code has a past. <span className="text-primary">Let's uncover it.</span></h1>
+                <h1 className="mt-3 text-[32px] font-semibold leading-tight tracking-tight sm:text-[34px] lg:text-[32px]">Your code has a past. <span className="text-primary">Let's uncover it.</span></h1>
                 <p className="mt-2 text-[13px] text-muted-foreground sm:text-sm">Decode forgotten logic, modernize outdated patterns, and hear the story behind your code.</p>
               </div>
-              <div className="flex flex-col gap-4 lg:items-end">
-                <div className="flex flex-wrap gap-1.5">{["Code explanation", "Pattern detection", "Legacy modernization"].map((t) => <span key={t} className={`${label} rounded border px-2 py-1.5 text-[9px] text-muted-foreground`}>{t}</span>)}</div>
+              <div className="flex shrink-0 flex-col gap-4 lg:items-end">
+                <div className="flex flex-wrap gap-1.5 lg:flex-nowrap">{["Code explanation", "Pattern detection", "Legacy modernization"].map((t) => <span key={t} className={`${label} rounded border px-2 py-1.5 text-[9px] text-muted-foreground`}>{t}</span>)}</div>
                 <button onClick={openSave} className={`${label} inline-flex w-fit items-center gap-2 rounded-md border px-4 py-2.5 font-bold text-foreground transition hover:border-primary/60 hover:text-primary`}><Save className="size-3.5" />Save relic</button>
               </div>
             </section>
 
             {/* PANELS */}
-            <section className="grid gap-4 md:grid-cols-2">
+            <section className="grid gap-4 md:grid-cols-2 md:items-start">
               {/* RELIC */}
               <div className="relative flex flex-col overflow-hidden rounded-[9px] border bg-card before:absolute before:left-3 before:top-0 before:h-0.5 before:w-12 before:bg-primary">
                 <PanelHead n="01" title="The Relic" sub="Insert a fragment from the past." tag="Input / source code" />
@@ -171,7 +171,7 @@ function Index() {
               </div>
 
               {/* FINDINGS */}
-              <div className="relative flex min-h-[520px] flex-col overflow-hidden rounded-[9px] border bg-card before:absolute before:left-3 before:top-0 before:h-0.5 before:w-12 before:bg-primary" aria-live="polite">
+              <div className="relative flex h-[560px] flex-col overflow-hidden rounded-[9px] md:h-[515px] border bg-card before:absolute before:left-3 before:top-0 before:h-0.5 before:w-12 before:bg-primary" aria-live="polite">
                 <PanelHead n="02" title="The Findings" sub="A new perspective on forgotten logic." tag="Output / report" />
                 <div className={`${label} flex items-center justify-between gap-2 border-b px-4 py-3 text-[9px]`}>
                   {loading ? <span className="flex items-center gap-1.5 text-amber"><Loader2 className="size-3 animate-spin" />Analyzing</span>
