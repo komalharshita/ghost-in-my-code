@@ -1,74 +1,56 @@
 import type { Language, Report } from "./types";
 
-export interface Sample { id: string; title: string; blurb: string; language: Language; code: string; demoReport: Report }
+export interface Sample { id: string; title: string; tag: string; difficulty: string; blurb: string; language: Language; code: string; demoReport: Report }
 
 /** Bundled sample relics. `demoReport` is a hand-written, labeled DEMO report — never shown as AI output. */
 export const SAMPLES: Sample[] = [
   {
-    id: "py2-inventory",
-    title: "Python 2 inventory script",
-    blurb: "print statements, xrange, has_key",
+    id: "py2-greeting",
+    title: "The Forgotten Greeting",
+    tag: "PYTHON 2",
+    difficulty: "Beginner",
+    blurb: "A greeting function still speaking Python 2's print statement.",
     language: "python",
-    code: `# inventory.py
-stock = {"apple": 3, "pear": 0}
+    code: `def greet(name):
+    print "Hello, " + name
 
-def report(items):
-    for i in xrange(len(items.keys())):
-        name = items.keys()[i]
-        if items.has_key(name) and items[name] > 0:
-            print "%s: %d in stock" % (name, items[name])
-        else:
-            print name + " is sold out"
-
-try:
-    report(stock)
-except KeyError, e:
-    print "missing", e`,
+greet("developer")`,
     demoReport: {
-      summary: "Prints each item in a stock dictionary, showing the count if positive and 'sold out' otherwise. It is written in Python 2 syntax and will not run on Python 3.",
+      summary: "This snippet defines a greeting function and calls it with the name `developer`. Its print statement uses Python 2 syntax and needs updating for Python 3.",
       language: "Python 2",
-      key_concepts: ["dict iteration", "index-based loop", "string formatting", "exception handling"],
+      key_concepts: ["function definition", "string concatenation", "print statement"],
       outdated_patterns: [
-        { pattern: "print statement", explanation: "`print x` is a statement in Python 2 only.", modern_alternative: "print(x)" },
-        { pattern: "xrange / keys()[i]", explanation: "Indexing into keys() relies on Python 2 returning a list.", modern_alternative: "for name, count in items.items():" },
-        { pattern: "dict.has_key", explanation: "Removed in Python 3.", modern_alternative: "`name in items`" },
-        { pattern: "except KeyError, e", explanation: "Python 2 exception syntax.", modern_alternative: "except KeyError as e:" },
+        { pattern: "Legacy print statement", explanation: "`print \"...\"` is a statement in Python 2 and a SyntaxError in Python 3.", modern_alternative: "print(\"Hello, \" + name) or an f-string" },
       ],
       potential_issues: [
-        { issue: "has_key check is redundant", severity: "low", evidence: "name comes from items.keys(), so it is always present." },
-        { issue: "KeyError handler is effectively unreachable", severity: "low", evidence: "No lookup uses a key that is not already in the dict." },
+        { issue: "Concatenation fails for non-string names", severity: "low", evidence: "\"Hello, \" + name raises TypeError if name is not a str." },
       ],
-      modernized_code: `# inventory.py
-stock = {"apple": 3, "pear": 0}
+      modernized_code: `def greet(name: str) -> None:
+    print(f"Hello, {name}")
 
-def report(items: dict[str, int]) -> None:
-    for name, count in items.items():
-        if count > 0:
-            print(f"{name}: {count} in stock")
-        else:
-            print(f"{name} is sold out")
 
-if __name__ == "__main__":
-    report(stock)`,
+greet("developer")`,
       changes: [
-        { what: "Iterate with items()", why: "Clearer and works in Python 3, where keys() is a view." },
-        { what: "f-strings instead of % and +", why: "More readable; same output text." },
-        { what: "Dropped the try/except", why: "The KeyError could not occur; remove only if you agree." },
+        { what: "print(...) function call", why: "Required by Python 3." },
+        { what: "f-string instead of +", why: "Reads clearer and converts non-string values automatically." },
+        { what: "Type hints", why: "Optional; documents the expected argument." },
       ],
       line_explanations: [
-        { line: "5", code: "for i in xrange(len(items.keys())):", explanation: "Loops over indices rather than items — an older idiom." },
-        { line: "8", code: 'print "%s: %d in stock" % (...)', explanation: "Python 2 print with %-formatting." },
-        { line: "14", code: "except KeyError, e:", explanation: "Python 2-only syntax; a SyntaxError in Python 3." },
+        { line: "1", code: "def greet(name):", explanation: "Defines a reusable function taking one argument." },
+        { line: "2", code: 'print "Hello, " + name', explanation: "Python 2 print statement; joins two strings." },
+        { line: "4", code: 'greet("developer")', explanation: "Calls the function, printing \"Hello, developer\"." },
       ],
-      compatibility_notes: ["Modernized version requires Python 3.9+ for the dict[str, int] annotation.", "Dict ordering is insertion order on 3.7+; Python 2 order was arbitrary."],
-      ghost_diary: "I was written when print didn't need parentheses and nobody questioned it. I counted apples one index at a time, because that's how they taught me. I guarded against a KeyError that never came — a small superstition. If you're moving me to Python 3, be gentle: I only ever wanted to tell you what was left on the shelf.",
-      uncertainties: ["Whether other modules rely on the exact output format.", "Whether the dead except block was intentional."],
+      compatibility_notes: ["Requires revision for Python 3.", "The f-string version needs Python 3.6+."],
+      ghost_diary: "I was written when print didn't need parentheses and nobody thought twice about it. I only know one trick: saying hello. I've greeted the same developer over and over, never knowing their real name. If you carry me into Python 3, wrap my words in parentheses — I promise I'll still be polite.",
+      uncertainties: ["Whether callers ever pass non-string names.", "Static review only — the code was not executed."],
     },
   },
   {
     id: "js-callbacks",
-    title: "Callback pyramid (Node.js)",
-    blurb: "var, error-first callbacks, nesting",
+    title: "Callback Afterlife",
+    tag: "JAVASCRIPT",
+    difficulty: "Intermediate",
+    blurb: "Error-first callbacks nested inside each other.",
     language: "javascript",
     code: `var fs = require('fs');
 
@@ -122,8 +104,10 @@ export async function loadConfig(path) {
   },
   {
     id: "nested-loops",
-    title: "Triple-nested duplicate finder",
-    blurb: "confusing O(n³) loops in Java",
+    title: "The Nested Loop",
+    tag: "ALGORITHM",
+    difficulty: "Intermediate",
+    blurb: "A triple-nested duplicate finder in pre-generics Java.",
     language: "java",
     code: `import java.util.*;
 
@@ -186,8 +170,10 @@ public class Dupes {
   },
   {
     id: "c-strings",
-    title: "C string greeter",
-    blurb: "gets, strcpy, malloc without free",
+    title: "The Memory Echo",
+    tag: "C / C++",
+    difficulty: "Advanced",
+    blurb: "gets, strcpy and a malloc that is never freed.",
     language: "c",
     code: `#include <stdio.h>
 #include <stdlib.h>
