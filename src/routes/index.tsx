@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Ghost, Play, Trash2, Save, FolderOpen, Loader2, Github, ShieldAlert } from "lucide-react";
+import { Play, Save, Github, Menu, X, Check, Loader2, Trash2, FolderOpen, Pencil, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ReportView } from "@/components/ghost/Report";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { ReportView, label } from "@/components/ghost/Report";
+import { CodeEditor } from "@/components/ghost/CodeEditor";
 import { analyzeCode, getAiStatus } from "@/lib/ghost/analyze.functions";
 import { runDeterministic } from "@/lib/ghost/deterministic";
 import { SAMPLES, type Sample } from "@/lib/ghost/samples";
@@ -28,216 +28,267 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const PROGRESS = ["Dusting off the relic…", "Reading old inscriptions…", "Consulting the ghost…", "Drafting the archaeological report…"];
-const REPO_URL = "https://github.com/your-username/ghost-in-my-code";
+type View = "workspace" | "samples" | "saved" | "about";
+const NAV: { id: View; name: string }[] = [{ id: "workspace", name: "Workspace" }, { id: "samples", name: "Sample Relics" }, { id: "saved", name: "Saved" }, { id: "about", name: "About" }];
+const PROGRESS = ["Dusting off the relic…", "Reading old inscriptions…", "Consulting the ghost…", "Drafting the report…"];
+type AiStatus = { configured: boolean; model: string; provider: string; openWeight: boolean };
+
+function demoResult(s: Sample): AnalysisResult {
+  const det = runDeterministic(s.code, s.language);
+  return { report: s.demoReport, deterministic: det.findings, stats: det.stats, source: "demo", provider: "Bundled sample", model: "none", openWeight: false, createdAt: new Date().toISOString() };
+}
+
+function Logo() {
+  return <span aria-hidden className="relative grid size-7 place-items-center rounded-md border-2 border-primary"><span className="absolute bottom-1.5 left-1.5 size-0.5 rounded-full bg-primary" /><span className="absolute bottom-1.5 right-1.5 size-0.5 rounded-full bg-primary" /></span>;
+}
 
 function Index() {
   const analyze = useServerFn(analyzeCode);
   const status = useServerFn(getAiStatus);
-  const [ai, setAi] = useState<{ configured: boolean; model: string; provider: string; openWeight: boolean } | null>(null);
-  const [code, setCode] = useState(SAMPLES[0].code);
-  const [language, setLanguage] = useState<Language>(SAMPLES[0].language);
-  const [title, setTitle] = useState(SAMPLES[0].title);
-  const [sampleId, setSampleId] = useState<string | null>(SAMPLES[0].id);
-  const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [resultCode, setResultCode] = useState("");
+  const first = SAMPLES[0]!;
+  const [view, setView] = useState<View>("workspace");
+  const [menu, setMenu] = useState(false);
+  const [ai, setAi] = useState<AiStatus | null>(null);
+  const [code, setCode] = useState(first.code);
+  const [language, setLanguage] = useState<Language>(first.language);
+  const [title, setTitle] = useState(first.title);
+  const [result, setResult] = useState<AnalysisResult | null>(() => demoResult(first));
+  const [resultCode, setResultCode] = useState(first.code);
+  const [resultLang, setResultLang] = useState<Language>(first.language);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [relics, setRelics] = useState<SavedRelic[]>([]);
-  const workspace = useRef<HTMLElement>(null);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveTitle, setSaveTitle] = useState("");
 
   useEffect(() => { setRelics(loadRelics()); status().then(setAi).catch(() => setAi({ configured: false, model: "", provider: "", openWeight: false })); }, [status]);
   useEffect(() => { if (!loading) return; const t = setInterval(() => setStep((s) => (s + 1) % PROGRESS.length), 2200); return () => clearInterval(t); }, [loading]);
 
-  const sample = sampleId ? SAMPLES.find((s) => s.id === sampleId) : undefined;
-  const sampleUnchanged = !!sample && sample.code === code;
-  const tooLong = code.length > MAX_CODE_CHARS;
+  const go = (v: View) => { setView(v); setMenu(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const matchingSample = SAMPLES.find((s) => s.code === code);
 
-  function pickSample(s: Sample) {
-    setCode(s.code); setLanguage(s.language); setTitle(s.title); setSampleId(s.id); setError(null);
-    workspace.current?.scrollIntoView({ behavior: "smooth" });
-  }
-
-  function showDemo() {
-    if (!sample) return;
-    const det = runDeterministic(sample.code, sample.language);
-    setResult({ report: sample.demoReport, deterministic: det.findings, stats: det.stats, source: "demo", provider: "Bundled sample", model: "none", openWeight: false, createdAt: new Date().toISOString() });
-    setResultCode(sample.code); setError(null);
-  }
+  function loadSample(s: Sample) { setCode(s.code); setLanguage(s.language); setTitle(s.title); setError(null); go("workspace"); toast(`Loaded "${s.title}"`); }
 
   async function run() {
+    if (loading) return;
     setError(null);
-    if (!code.trim()) return setError("Paste some code first — the relic is empty.");
-    if (tooLong) return setError(`Trim the code to ${MAX_CODE_CHARS} characters or fewer.`);
+    if (!code.trim()) return setError("The relic is empty — paste some code first.");
+    if (code.length > MAX_CODE_CHARS) return setError(`Trim the code to ${MAX_CODE_CHARS.toLocaleString()} characters or fewer.`);
     setLoading(true); setStep(0);
     try {
       const res = await analyze({ data: { code, language, title: title.trim() || undefined } });
-      if (res.ok) { setResult(res.result); setResultCode(code); toast.success("Excavation complete"); }
-      else setError(res.error + (res.code === "not_configured" && sampleUnchanged ? " You can still view this sample's demo report." : ""));
-    } catch { setError("Network error — check your connection and retry."); }
+      if (res.ok) { setResult(res.result); setResultCode(code); setResultLang(language); toast.success("Analysis complete"); }
+      else setError(res.error);
+    } catch { setError("Network error — check your connection and try again."); }
     finally { setLoading(false); }
   }
 
-  function save() {
-    if (!result) return;
-    const relic: SavedRelic = { id: crypto.randomUUID(), title: title.trim() || "Untitled relic", language, code: resultCode, result, savedAt: new Date().toISOString() };
-    const next = [relic, ...relics]; setRelics(next); saveRelics(next); toast.success("Relic saved to this browser");
+  function persist(next: SavedRelic[], msg: string) {
+    if (saveRelics(next)) { setRelics(next); toast.success(msg); } else toast.error("Browser storage is full or unavailable — nothing was saved.");
   }
-  function reopen(r: SavedRelic) { setCode(r.code); setLanguage(r.language); setTitle(r.title); setResult(r.result); setResultCode(r.code); setSampleId(null); workspace.current?.scrollIntoView({ behavior: "smooth" }); }
-  function remove(id: string) { const next = relics.filter((r) => r.id !== id); setRelics(next); saveRelics(next); toast("Relic deleted"); }
-  function clearAll() { setRelics([]); saveRelics([]); toast("History cleared"); }
+  function openSave() { setSaveTitle(title || "Untitled relic"); setSaveOpen(true); }
+  function confirmSave() {
+    const r = result && resultCode === code ? result : null;
+    const relic: SavedRelic = { id: crypto.randomUUID(), title: saveTitle.trim().slice(0, MAX_TITLE_CHARS) || "Untitled relic", language, code, result: r as AnalysisResult, savedAt: new Date().toISOString() };
+    persist([relic, ...relics], "Relic saved to this browser"); setSaveOpen(false);
+  }
+  function reopen(r: SavedRelic) { setCode(r.code); setLanguage(r.language); setTitle(r.title); if (r.result) { setResult(r.result); setResultCode(r.code); setResultLang(r.language); } go("workspace"); }
+  function rename(id: string) {
+    const r = relics.find((x) => x.id === id); if (!r) return;
+    const t = window.prompt("Rename relic", r.title)?.trim(); if (!t) return;
+    persist(relics.map((x) => (x.id === id ? { ...x, title: t.slice(0, MAX_TITLE_CHARS) } : x)), "Relic renamed");
+  }
 
   return (
-    <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3" aria-label="Main">
-          <a href="#top" className="flex items-center gap-2 font-mono text-sm text-primary text-glow"><Ghost className="size-4" /> ghost_in_my_code</a>
-          <div className="hidden gap-5 font-mono text-xs text-muted-foreground sm:flex">
-            <a className="hover:text-primary" href="#workspace">workspace</a>
-            <a className="hover:text-primary" href="#samples">samples</a>
-            <a className="hover:text-primary" href="#saved">saved</a>
-            <a className="hover:text-primary" href="#about">about</a>
-          </div>
-          <StatusBadge ai={ai} />
-        </nav>
-      </header>
-
-      {/* HERO */}
-      <section id="top" className="mx-auto grid max-w-7xl gap-10 px-4 py-16 lg:grid-cols-2 lg:py-24">
-        <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-          <p className="font-mono text-xs uppercase tracking-[0.3em] text-amber">Every line of code has a past.</p>
-          <h1 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Your code has a past. <span className="text-primary text-glow">Let's uncover it.</span></h1>
-          <p className="mt-5 max-w-lg text-lg text-muted-foreground">Decode forgotten logic, modernize outdated patterns, and hear the story behind your code.</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button size="lg" className="glow font-mono" onClick={() => workspace.current?.scrollIntoView({ behavior: "smooth" })}><Play className="size-4" /> Examine a Code Relic</Button>
-            <Button size="lg" variant="outline" className="font-mono" asChild><a href="#samples">Explore Sample Relics</a></Button>
-          </div>
-        </div>
-        <div className="rounded-lg border bg-panel shadow-2xl">
-          <div className="flex items-center gap-1.5 border-b px-3 py-2"><span className="size-2.5 rounded-full bg-muted" /><span className="size-2.5 rounded-full bg-muted" /><span className="size-2.5 rounded-full bg-muted" /><span className="ml-2 font-mono text-[11px] text-muted-foreground">inventory.py — 2009?</span></div>
-          <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-muted-foreground">{`for i in xrange(len(items.keys())):
-    if items.has_key(name):
-        print "%s: %d" % (name, n)`}</pre>
-          <div className="border-t p-4 font-mono text-xs">
-            <p className="text-primary">&gt; report.preview <span className="text-amber">(example)</span></p>
-            <p className="mt-2 text-foreground">⚠ Python 2 print statement — invalid in Python 3</p>
-            <p className="text-foreground">⚠ has_key() removed → use <span className="text-primary">name in items</span></p>
-            <p className="mt-2 italic text-muted-foreground cursor-blink">"I counted apples one index at a time…"</p>
-          </div>
-        </div>
-      </section>
-
-      {/* WORKSPACE */}
-      <section id="workspace" ref={workspace} className="mx-auto max-w-7xl scroll-mt-16 px-4 pb-16">
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-lg border bg-card p-4">
-            <h2 className="mb-4 font-mono text-sm uppercase tracking-widest text-primary">01 · The Relic</h2>
-            <div className="mb-3 grid gap-3 sm:grid-cols-[1fr_160px]">
-              <div><label htmlFor="title" className="sr-only">Snippet title</label><Input id="title" placeholder="Snippet title (optional)" maxLength={MAX_TITLE_CHARS} value={title} onChange={(e) => setTitle(e.target.value)} className="font-mono text-xs" /></div>
-              <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
-                <SelectTrigger aria-label="Language" className="font-mono text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{LANGUAGES.map((l) => <SelectItem key={l} value={l}>{LANGUAGE_LABELS[l]}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <label htmlFor="code" className="sr-only">Source code</label>
-            <textarea id="code" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} placeholder="Paste your legacy code here…"
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run(); }}
-              className="h-[420px] w-full resize-y rounded-md border bg-panel p-4 font-mono text-xs leading-relaxed text-foreground outline-none focus:glow" />
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <span className={`font-mono text-xs ${tooLong ? "text-destructive" : "text-muted-foreground"}`}>{code.length} / {MAX_CODE_CHARS} chars · Ctrl+Enter to analyze</span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={() => { setCode(""); setSampleId(null); setError(null); }}><Trash2 className="size-3.5" /> Clear</Button>
-                {sampleUnchanged && <Button variant="outline" size="sm" onClick={showDemo}>View demo report</Button>}
-                <Button size="sm" className="glow" onClick={run} disabled={loading}>{loading ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />} Analyze</Button>
-              </div>
-            </div>
-            {error && <p role="alert" className="mt-3 rounded border border-destructive/50 p-3 text-sm text-destructive">{error}</p>}
-            <p className="mt-3 flex gap-2 text-xs text-muted-foreground"><ShieldAlert className="size-4 shrink-0" />Analyzing sends your code to the configured AI provider ({ai?.provider || "none configured"}). It is never executed. Avoid pasting secrets.</p>
-          </div>
-
-          <div className="rounded-lg border bg-card p-4" aria-live="polite">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-mono text-sm uppercase tracking-widest text-primary">02 · Archaeological Report</h2>
-              {result && <Button variant="outline" size="sm" onClick={save}><Save className="size-3.5" /> Save</Button>}
-            </div>
-            {loading ? (
-              <div className="flex h-[420px] flex-col items-center justify-center gap-3 font-mono text-sm text-muted-foreground"><Loader2 className="size-6 animate-spin text-primary" /><span className="cursor-blink">{PROGRESS[step]}</span></div>
-            ) : result ? <ReportView result={result} originalCode={resultCode} /> : (
-              <div className="flex h-[420px] flex-col items-center justify-center gap-3 text-center text-muted-foreground"><Ghost className="size-10 text-primary/60 glitch" /><p className="font-mono text-sm">No report yet.</p><p className="max-w-xs text-xs">Paste code and press Analyze, or pick a sample relic below.</p></div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* SAMPLES */}
-      <section id="samples" className="mx-auto max-w-7xl scroll-mt-16 px-4 pb-16">
-        <h2 className="mb-4 font-mono text-sm uppercase tracking-widest text-primary">03 · Sample Relics</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {SAMPLES.map((s) => (
-            <button key={s.id} onClick={() => pickSample(s)} className="rounded-lg border bg-card p-4 text-left transition hover:border-primary/60 hover:glow focus-visible:glow focus-visible:outline-none">
-              <span className="font-mono text-[11px] uppercase text-amber">{LANGUAGE_LABELS[s.language]}</span>
-              <p className="mt-1 font-medium">{s.title}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{s.blurb}</p>
-            </button>
-          ))}
-        </div>
-        <p className="mt-3 text-xs text-muted-foreground">Selecting a sample loads it into the editor. Analyze runs live AI; "View demo report" shows a clearly labeled pre-written report.</p>
-      </section>
-
-      {/* SAVED */}
-      <section id="saved" className="mx-auto max-w-7xl scroll-mt-16 px-4 pb-16">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-mono text-sm uppercase tracking-widest text-primary">04 · Saved Relics</h2>
-          {relics.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild><Button variant="ghost" size="sm">Clear all</Button></AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>Clear all saved relics?</AlertDialogTitle><AlertDialogDescription>This deletes every saved analysis from this browser. It cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={clearAll}>Clear all</AlertDialogAction></AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        </div>
-        {relics.length === 0 ? <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing saved yet. Saved relics stay only in this browser (localStorage).</p> : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {relics.map((r) => (
-              <li key={r.id} className="rounded-lg border bg-card p-4">
-                <p className="font-medium">{r.title}</p>
-                <p className="mt-1 font-mono text-[11px] text-muted-foreground">{LANGUAGE_LABELS[r.language]} · {r.result.source === "demo" ? "demo" : "AI"} · {new Date(r.savedAt).toLocaleString()}</p>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => reopen(r)}><FolderOpen className="size-3.5" /> Reopen</Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild><Button size="sm" variant="ghost" aria-label={`Delete ${r.title}`}><Trash2 className="size-3.5" /></Button></AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader><AlertDialogTitle>Delete "{r.title}"?</AlertDialogTitle><AlertDialogDescription>This removes the saved analysis from this browser.</AlertDialogDescription></AlertDialogHeader>
-                      <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => remove(r.id)}>Delete</AlertDialogAction></AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </li>
+    <div className="flex min-h-screen flex-col overflow-x-hidden">
+      <div className="mx-auto w-full max-w-[1110px] flex-1 px-4 sm:px-6">
+        {/* NAV */}
+        <header className="relative flex items-center justify-between border-b">
+          <button onClick={() => go("workspace")} className="flex items-center gap-2.5 py-3.5" aria-label="Ghost in My Code home">
+            <Logo /><span className="font-mono text-[13px] font-bold tracking-wide">GHOST IN MY CODE</span>
+            <span className="hidden rounded border border-green-2/60 px-1.5 py-0.5 font-mono text-[9px] text-green-2 sm:inline">v0.1</span>
+          </button>
+          <nav aria-label="Main" className="hidden items-center md:flex">
+            {NAV.map((n) => (
+              <button key={n.id} onClick={() => go(n.id)} aria-current={view === n.id ? "page" : undefined}
+                className={`${label} relative px-3 py-5 transition hover:text-foreground ${view === n.id ? "text-primary after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:bg-primary after:shadow-[0_0_8px_var(--primary)]" : "text-muted-foreground"}`}>{n.name}</button>
             ))}
-          </ul>
+            <span className={`${label} ml-5 flex items-center gap-1.5 text-primary`}><span className="size-1.5 animate-pulse rounded-full bg-primary" />System online</span>
+            <a href="#repo" onClick={(e) => { e.preventDefault(); go("about"); }} className="ml-4 text-muted-foreground hover:text-primary" aria-label="Source repository (see About)"><Github className="size-4" /></a>
+          </nav>
+          <button className="p-2 md:hidden" aria-label={menu ? "Close menu" : "Open menu"} aria-expanded={menu} onClick={() => setMenu(!menu)}>{menu ? <X className="size-5" /> : <Menu className="size-5" />}</button>
+          {menu && (
+            <div className="absolute inset-x-0 top-full z-40 border-b bg-card p-2 md:hidden">
+              {NAV.map((n) => <button key={n.id} onClick={() => go(n.id)} className={`${label} block w-full rounded px-3 py-3 text-left ${view === n.id ? "bg-elevated text-primary" : "text-muted-foreground"}`}>{n.name}</button>)}
+              <p className={`${label} flex items-center gap-1.5 px-3 py-2 text-primary`}><span className="size-1.5 rounded-full bg-primary" />System online</p>
+            </div>
+          )}
+        </header>
+
+        {view === "workspace" && (
+          <main className="animate-in fade-in duration-300">
+            {/* HERO */}
+            <section className="flex flex-col gap-5 pt-10 pb-7 sm:pt-12 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className={`${label} text-green-2`}>Digital archaeology lab / 001</p>
+                <h1 className="mt-3 text-[32px] font-semibold leading-tight tracking-tight sm:text-[34px]">Your code has a past. <span className="text-primary">Let's uncover it.</span></h1>
+                <p className="mt-2 text-[13px] text-muted-foreground sm:text-sm">Decode forgotten logic, modernize outdated patterns, and hear the story behind your code.</p>
+              </div>
+              <div className="flex flex-col gap-4 lg:items-end">
+                <div className="flex flex-wrap gap-1.5">{["Code explanation", "Pattern detection", "Legacy modernization"].map((t) => <span key={t} className={`${label} rounded border px-2 py-1.5 text-[9px] text-muted-foreground`}>{t}</span>)}</div>
+                <button onClick={openSave} className={`${label} inline-flex w-fit items-center gap-2 rounded-md border px-4 py-2.5 font-bold text-foreground transition hover:border-primary/60 hover:text-primary`}><Save className="size-3.5" />Save relic</button>
+              </div>
+            </section>
+
+            {/* PANELS */}
+            <section className="grid gap-4 md:grid-cols-2">
+              {/* RELIC */}
+              <div className="relative flex flex-col overflow-hidden rounded-[9px] border bg-card before:absolute before:left-3 before:top-0 before:h-0.5 before:w-12 before:bg-primary">
+                <PanelHead n="01" title="The Relic" sub="Insert a fragment from the past." tag="Input / source code" />
+                <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2.5">
+                  <Select value={language} onValueChange={(v) => setLanguage(v as Language)}>
+                    <SelectTrigger aria-label="Programming language" className={`${label} h-8 w-auto gap-2 bg-elevated font-bold text-foreground`}><span className="size-1.5 rounded-full bg-primary" /><SelectValue /></SelectTrigger>
+                    <SelectContent>{LANGUAGES.map((l) => <SelectItem key={l} value={l}>{LANGUAGE_LABELS[l].toUpperCase()}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={matchingSample?.id ?? ""} onValueChange={(id) => { const s = SAMPLES.find((x) => x.id === id); if (s) loadSample(s); }}>
+                    <SelectTrigger aria-label="Load sample" className={`${label} h-8 w-[150px] bg-panel text-muted-foreground sm:w-[136px]`}><SelectValue placeholder="Load sample" /></SelectTrigger>
+                    <SelectContent>{SAMPLES.map((s) => <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <button onClick={() => { setCode(""); setError(null); }} className={`${label} ml-auto px-2 py-1 text-muted-foreground hover:text-destructive`}>Clear</button>
+                </div>
+                <CodeEditor value={code} onChange={setCode} language={language} onSubmit={run} />
+                <div className={`${label} flex justify-between border-t px-3 py-2.5 text-[9px] ${code.length > MAX_CODE_CHARS ? "text-destructive" : "text-muted-foreground"}`}>
+                  <span>{code.length.toLocaleString()} / {MAX_CODE_CHARS.toLocaleString()} characters</span><span>UTF-8 · LF</span>
+                </div>
+                <div className="flex items-center gap-3 px-3 pb-3">
+                  <button onClick={run} disabled={loading} className={`${label} flex flex-1 items-center justify-center gap-2 rounded-md bg-primary py-3 font-bold text-primary-foreground transition hover:shadow-[0_0_18px_-2px_var(--primary)] disabled:opacity-60`}>
+                    {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}{loading ? "Examining…" : "Examine this relic"}
+                  </button>
+                  <span className={`${label} hidden w-16 text-[9px] leading-snug text-muted-foreground lg:block`}>Ctrl + Enter to analyze</span>
+                </div>
+                {error && <p role="alert" className="mx-3 mb-3 flex gap-2 rounded border border-destructive/50 p-2.5 text-xs text-destructive"><AlertTriangle className="size-4 shrink-0" /><span>{error}{matchingSample && !ai?.configured && <> <button className="underline" onClick={() => { setResult(demoResult(matchingSample)); setResultCode(matchingSample.code); setResultLang(matchingSample.language); setError(null); }}>View this sample's demo report.</button></>}</span></p>}
+              </div>
+
+              {/* FINDINGS */}
+              <div className="relative flex min-h-[520px] flex-col overflow-hidden rounded-[9px] border bg-card before:absolute before:left-3 before:top-0 before:h-0.5 before:w-12 before:bg-primary" aria-live="polite">
+                <PanelHead n="02" title="The Findings" sub="A new perspective on forgotten logic." tag="Output / report" />
+                <div className={`${label} flex items-center justify-between gap-2 border-b px-4 py-3 text-[9px]`}>
+                  {loading ? <span className="flex items-center gap-1.5 text-amber"><Loader2 className="size-3 animate-spin" />Analyzing</span>
+                    : result ? <span className={`flex items-center gap-1.5 font-bold ${result.source === "demo" ? "text-amber" : "text-primary"}`}><Check className="size-3" />{result.source === "demo" ? "Demo report" : "Analysis complete"}</span>
+                    : <span className="text-muted-foreground">Awaiting relic</span>}
+                  {result && !loading && <span className="truncate text-muted-foreground">{LANGUAGE_LABELS[resultLang]} / {result.report.outdated_patterns.length ? "Legacy syntax" : "No legacy flags"}</span>}
+                </div>
+                {loading ? (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-3 font-mono text-xs text-muted-foreground"><Loader2 className="size-5 animate-spin text-primary" /><span className="cursor-blink">{PROGRESS[step]}</span></div>
+                ) : result ? <ReportView key={result.createdAt} result={result} originalCode={resultCode} language={resultLang} /> : (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center"><p className="font-mono text-xs text-muted-foreground glitch">NO SIGNAL</p><p className="text-xs text-muted-foreground">Examine a relic to see findings.</p></div>
+                )}
+              </div>
+            </section>
+
+            <div className={`${label} flex flex-col gap-1 py-4 text-[9px] text-muted-foreground sm:flex-row sm:justify-between`}>
+              <span className="flex items-center gap-1.5"><span className={`size-1.5 rounded-full ${ai?.configured ? "bg-primary" : "bg-amber"}`} />
+                {ai == null ? "Checking AI…" : ai.configured ? `Live AI · ${ai.model} via ${ai.provider}${ai.openWeight ? " · open-weight" : " · fallback, not open-weight"} · code is sent to this provider` : "Demo mode · AI not configured · no code is transmitted"}
+              </span>
+              <span>Never executed · static review only</span>
+            </div>
+          </main>
         )}
-      </section>
 
-      {/* ABOUT */}
-      <section id="about" className="mx-auto max-w-3xl scroll-mt-16 px-4 pb-20 text-sm leading-relaxed text-muted-foreground">
-        <h2 className="mb-4 font-mono text-sm uppercase tracking-widest text-primary">05 · About</h2>
-        <p><span className="text-foreground">The problem.</span> Legacy code outlives its authors and documentation. Understanding it is slow, and rewriting it blindly is risky.</p>
-        <p className="mt-3"><span className="text-foreground">Why open-weight AI.</span> Open models like Gemma can be inspected, self-hosted, and run without vendor lock-in — a good fit for code you may not want tied to one company.</p>
-        <p className="mt-3"><span className="text-foreground">How it works.</span> A server function validates your input, runs deterministic regex checks (never executes code), then sends the snippet to the model with strict instructions to return JSON. The reply is validated server-side, retried once if malformed, and rendered as plain text. When an open-weight provider key is configured it uses Gemma; otherwise it falls back to the Lovable AI Gateway, labeled as a proprietary fallback.</p>
-        <p className="mt-3"><span className="text-foreground">Privacy.</span> Code you analyze leaves your device and is processed by the AI provider shown at the top. Saved relics live only in your browser's localStorage. No accounts, no server-side storage.</p>
-        <p className="mt-4"><a href={REPO_URL} className="inline-flex items-center gap-1.5 text-primary hover:underline"><Github className="size-4" /> Source & README</a> <span className="text-xs">(update the link once the repository is public)</span></p>
-      </section>
+        {view === "samples" && (
+          <main className="animate-in fade-in py-10 duration-300">
+            <ViewHead k="Archive / samples" title="Sample Relics" sub="Load a specimen into the workspace, then examine it." />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SAMPLES.map((s) => (
+                <button key={s.id} onClick={() => loadSample(s)} className="group rounded-[9px] border bg-card p-5 text-left transition hover:border-primary/50 focus-visible:outline-1 focus-visible:outline-primary">
+                  <div className="flex items-center justify-between"><span className={`${label} text-green-2`}>{s.tag}</span><span className={`${label} rounded border px-1.5 py-0.5 text-[9px] text-muted-foreground`}>{s.difficulty}</span></div>
+                  <p className="mt-3 font-semibold group-hover:text-primary">{s.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{s.blurb}</p>
+                  <pre className="mt-3 overflow-hidden rounded border bg-panel p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">{s.code.split("\n").slice(0, 3).join("\n")}</pre>
+                </button>
+              ))}
+            </div>
+          </main>
+        )}
 
-      <footer className="border-t py-6 text-center font-mono text-[11px] text-muted-foreground">Ghost in My Code · built for DEV Hacktoberfest "Ghost in the Machine"</footer>
+        {view === "saved" && (
+          <main className="animate-in fade-in py-10 duration-300">
+            <div className="flex items-end justify-between gap-3">
+              <ViewHead k="Archive / local" title="Saved Relics" sub="Stored only in this browser's local storage." />
+              {relics.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild><button className={`${label} mb-6 rounded border px-3 py-2 text-muted-foreground hover:border-destructive/60 hover:text-destructive`}>Clear all</button></AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader><AlertDialogTitle>Clear all saved relics?</AlertDialogTitle><AlertDialogDescription>Every saved snippet and report in this browser will be deleted. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => persist([], "All relics cleared")}>Clear all</AlertDialogAction></AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+            {relics.length === 0 ? <div className="rounded-[9px] border border-dashed p-10 text-center"><p className="font-mono text-xs text-muted-foreground">NO RELICS ARCHIVED</p><button onClick={() => go("workspace")} className="mt-3 text-xs text-primary underline">Go to workspace</button></div> : (
+              <ul className="rounded-[9px] border bg-card">
+                {relics.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-3 border-b px-4 py-3.5 last:border-0">
+                    <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{r.title}</p>
+                      <p className={`${label} mt-1 text-[9px] text-muted-foreground`}>{LANGUAGE_LABELS[r.language]} · {r.result ? (r.result.source === "demo" ? "demo report" : "AI report") : "code only"} · {new Date(r.savedAt).toLocaleString()}</p></div>
+                    <button onClick={() => reopen(r)} className={`${label} inline-flex items-center gap-1 rounded border px-2.5 py-1.5 hover:border-primary/60 hover:text-primary`}><FolderOpen className="size-3" />Reopen</button>
+                    <button onClick={() => rename(r.id)} aria-label={`Rename ${r.title}`} className="rounded border p-1.5 text-muted-foreground hover:text-primary"><Pencil className="size-3.5" /></button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild><button aria-label={`Delete ${r.title}`} className="rounded border p-1.5 text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button></AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader><AlertDialogTitle>Delete "{r.title}"?</AlertDialogTitle><AlertDialogDescription>This removes the relic from this browser.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => persist(relics.filter((x) => x.id !== r.id), "Relic deleted")}>Delete</AlertDialogAction></AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </main>
+        )}
+
+        {view === "about" && (
+          <main className="animate-in fade-in max-w-2xl py-10 text-sm leading-relaxed text-muted-foreground duration-300">
+            <ViewHead k="Documentation" title="About" sub="Every line of code has a past." />
+            {[
+              ["The problem", "Legacy code outlives its authors and its documentation. Reading it is slow, and rewriting it blindly is risky."],
+              ["How it works", "Your snippet is validated on the server, checked by deterministic pattern rules, then sent to a language model with strict instructions to return a structured JSON report. The reply is validated (and retried once if malformed) before it is shown. Submitted code is treated as untrusted text and is never executed."],
+              ["Why open-weight AI", "Open-weight models such as Gemma can be inspected, self-hosted and run without vendor lock-in. The app prefers Gemma via an OpenAI-compatible host; if that isn't configured it falls back to the Lovable AI Gateway, which is clearly labeled as not open-weight."],
+              ["Deterministic vs AI", "Deterministic: input limits, static regex checks (e.g. Python 2 print, gets/strcpy, var, loop nesting), character counts, saving. AI: summary, patterns, issues, rewrite, line explanations, Ghost Diary. Sample reports are pre-written and labeled as demo."],
+              ["Privacy & security", "When live AI is on, your code leaves your device and is processed by the provider shown under the workspace. Nothing is stored on the server. Saved relics live only in this browser. The review is not a security audit."],
+            ].map(([h, t]) => <div key={h} className="mt-6"><h3 className={`${label} mb-1.5 text-green-2`}>{h}</h3><p>{t}</p></div>)}
+            <div id="repo" className="mt-6"><h3 className={`${label} mb-1.5 text-green-2`}>Source repository</h3><p className="inline-flex items-center gap-2"><Github className="size-4" />Repository URL not published yet.</p></div>
+          </main>
+        )}
+      </div>
+
+      <footer className="mx-auto mt-10 w-full max-w-[1110px] border-t px-4 py-5 sm:px-6">
+        <div className={`${label} flex flex-col gap-1 text-[9px] text-muted-foreground sm:flex-row sm:justify-between`}><span>Ghost in my code</span><span>Every line of code has a past.</span><span>Open source / 2026</span></div>
+      </footer>
+
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-mono text-sm uppercase tracking-widest">Save relic</DialogTitle>
+            <DialogDescription>{result && resultCode === code ? "Saves the code and its current report to this browser." : "Saves the code only — analyze it first to include a report."}</DialogDescription></DialogHeader>
+          <label htmlFor="save-title" className={`${label} text-muted-foreground`}>Title</label>
+          <input id="save-title" autoFocus maxLength={MAX_TITLE_CHARS} value={saveTitle} onChange={(e) => setSaveTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmSave()} className="w-full rounded-md border bg-panel px-3 py-2 font-mono text-sm outline-none focus:border-primary" />
+          <DialogFooter><button onClick={confirmSave} className={`${label} rounded-md bg-primary px-4 py-2.5 font-bold text-primary-foreground`}>Save</button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function StatusBadge({ ai }: { ai: { configured: boolean; model: string; openWeight: boolean } | null }) {
-  if (!ai) return <span className="font-mono text-[11px] text-muted-foreground">checking AI…</span>;
-  if (!ai.configured) return <span className="rounded border border-amber/60 px-2 py-1 font-mono text-[11px] text-amber">DEMO MODE · AI not configured</span>;
-  return <span className="max-w-[55vw] truncate rounded border border-primary/50 px-2 py-1 font-mono text-[11px] text-primary" title={ai.model}>● AI online · {ai.model}{ai.openWeight ? "" : " (fallback)"}</span>;
+function PanelHead({ n, title, sub, tag }: { n: string; title: string; sub: string; tag: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
+      <div className="flex gap-2.5"><span className="pt-0.5 font-mono text-[9px] text-green-2">{n}</span><div><h2 className="font-mono text-[13px] font-bold uppercase tracking-wide">{title}</h2><p className="mt-0.5 text-xs text-muted-foreground">{sub}</p></div></div>
+      <span className={`${label} hidden pt-2 text-[9px] text-muted-foreground sm:block`}>{tag}</span>
+    </div>
+  );
+}
+
+function ViewHead({ k, title, sub }: { k: string; title: string; sub: string }) {
+  return <div className="mb-6"><p className={`${label} text-green-2`}>{k}</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{sub}</p></div>;
 }
