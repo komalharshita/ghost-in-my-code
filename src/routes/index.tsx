@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Play, Save, Github, Menu, X, Check, Loader2, Trash2, FolderOpen, Pencil, AlertTriangle } from "lucide-react";
@@ -11,7 +11,7 @@ import { CodeEditor } from "@/components/ghost/CodeEditor";
 import { analyzeCode, getAiStatus } from "@/lib/ghost/analyze.functions";
 import { runDeterministic } from "@/lib/ghost/deterministic";
 import { SAMPLES, type Sample } from "@/lib/ghost/samples";
-import { loadRelics, saveRelics } from "@/lib/ghost/storage";
+import { listRelics, loadTokens, createRelic, renameRelic, deleteRelic, getRelic } from "@/lib/ghost/storage";
 import { LANGUAGES, LANGUAGE_LABELS, MAX_CODE_CHARS, MAX_TITLE_CHARS, type AnalysisResult, type Language, type SavedRelic } from "@/lib/ghost/types";
 
 export const Route = createFileRoute("/")({
@@ -25,6 +25,7 @@ export const Route = createFileRoute("/")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
+  validateSearch: (s: Record<string, unknown>): { relic?: string } => (typeof s["relic"] === "string" ? { relic: s["relic"] } : {}),
   component: Index,
 });
 
@@ -62,7 +63,10 @@ function Index() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveTitle, setSaveTitle] = useState("");
 
-  useEffect(() => { setRelics(loadRelics()); status().then(setAi).catch(() => setAi({ configured: false, model: "", provider: "", openWeight: false })); }, [status]);
+  const { relic: relicParam } = Route.useSearch();
+  const refreshMine = () => listRelics({ ids: Object.keys(loadTokens()) }).then(setRelics).catch(() => toast.error("Couldn't load your saved relics."));
+  useEffect(() => { if (!relicParam) return; getRelic(relicParam).then((r) => (r ? reopen(r) : toast.error("That relic no longer exists."))).catch(() => toast.error("Couldn't open that relic.")); }, [relicParam]);
+  useEffect(() => { refreshMine(); status().then(setAi).catch(() => setAi({ configured: false, model: "", provider: "", openWeight: false })); }, [status]);
   useEffect(() => { if (!loading) return; const t = setInterval(() => setStep((s) => (s + 1) % PROGRESS.length), 2200); return () => clearInterval(t); }, [loading]);
 
   const go = (v: View) => { setView(v); setMenu(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
@@ -84,20 +88,20 @@ function Index() {
     finally { setLoading(false); }
   }
 
-  function persist(next: SavedRelic[], msg: string) {
-    if (saveRelics(next)) { setRelics(next); toast.success(msg); } else toast.error("Browser storage is full or unavailable — nothing was saved.");
+  async function act(fn: () => Promise<unknown>, msg: string) {
+    try { await fn(); toast.success(msg); } catch { toast.error("Couldn't reach the archive — try again."); }
+    refreshMine();
   }
   function openSave() { setSaveTitle(title || "Untitled relic"); setSaveOpen(true); }
   function confirmSave() {
     const r = result && resultCode === code ? result : null;
-    const relic: SavedRelic = { id: crypto.randomUUID(), title: saveTitle.trim().slice(0, MAX_TITLE_CHARS) || "Untitled relic", language, code, result: r, savedAt: new Date().toISOString() };
-    persist([relic, ...relics], "Relic saved to this browser"); setSaveOpen(false);
+    act(() => createRelic({ title: saveTitle, language, code, result: r }), "Relic added to the public gallery"); setSaveOpen(false);
   }
   function reopen(r: SavedRelic) { setCode(r.code); setLanguage(r.language); setTitle(r.title); if (r.result) { setResult(r.result); setResultCode(r.code); setResultLang(r.language); } go("workspace"); }
   function rename(id: string) {
     const r = relics.find((x) => x.id === id); if (!r) return;
     const t = window.prompt("Rename relic", r.title)?.trim(); if (!t) return;
-    persist(relics.map((x) => (x.id === id ? { ...x, title: t.slice(0, MAX_TITLE_CHARS) } : x)), "Relic renamed");
+    act(() => renameRelic(id, t.slice(0, MAX_TITLE_CHARS)), "Relic renamed");
   }
 
   return (
@@ -114,6 +118,7 @@ function Index() {
               <button key={n.id} onClick={() => go(n.id)} aria-current={view === n.id ? "page" : undefined}
                 className={`${label} relative px-3 py-5 transition hover:text-foreground ${view === n.id ? "text-primary after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:bg-primary after:shadow-[0_0_8px_var(--primary)]" : "text-muted-foreground"}`}>{n.name}</button>
             ))}
+            <Link to="/gallery" className={`${label} px-3 py-5 text-muted-foreground transition hover:text-foreground`}>Gallery</Link>
             <span className={`${label} ml-5 flex items-center gap-1.5 text-primary`}><span className="size-1.5 animate-pulse rounded-full bg-primary" />System online</span>
             <a href="#repo" onClick={(e) => { e.preventDefault(); go("about"); }} className="ml-4 text-muted-foreground hover:text-primary" aria-label="Source repository (see About)"><Github className="size-4" /></a>
           </nav>
@@ -121,6 +126,7 @@ function Index() {
           {menu && (
             <div className="absolute inset-x-0 top-full z-40 border-b bg-card p-2 md:hidden">
               {NAV.map((n) => <button key={n.id} onClick={() => go(n.id)} className={`${label} block w-full rounded px-3 py-3 text-left ${view === n.id ? "bg-elevated text-primary" : "text-muted-foreground"}`}>{n.name}</button>)}
+              <Link to="/gallery" className={`${label} block w-full rounded px-3 py-3 text-left text-muted-foreground`}>Gallery</Link>
               <p className={`${label} flex items-center gap-1.5 px-3 py-2 text-primary`}><span className="size-1.5 rounded-full bg-primary" />System online</p>
             </div>
           )}
@@ -215,13 +221,13 @@ function Index() {
         {view === "saved" && (
           <main className="animate-in fade-in py-10 duration-300">
             <div className="flex items-end justify-between gap-3">
-              <ViewHead k="Archive / local" title="Saved Relics" sub="Stored only in this browser's local storage." />
+              <ViewHead k="Archive / yours" title="Saved Relics" sub="Relics you saved from this browser. They're also visible to everyone in the gallery." />
               {relics.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild><button className={`${label} mb-6 rounded border px-3 py-2 text-muted-foreground hover:border-destructive/60 hover:text-destructive`}>Clear all</button></AlertDialogTrigger>
                   <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>Clear all saved relics?</AlertDialogTitle><AlertDialogDescription>Every saved snippet and report in this browser will be deleted. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => persist([], "All relics cleared")}>Clear all</AlertDialogAction></AlertDialogFooter>
+                    <AlertDialogHeader><AlertDialogTitle>Clear all saved relics?</AlertDialogTitle><AlertDialogDescription>Every relic you saved will be removed from the public gallery. This cannot be undone.</AlertDialogDescription></AlertDialogHeader>
+                    <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => act(() => Promise.all(relics.map((x) => deleteRelic(x.id))), "All your relics deleted")}>Clear all</AlertDialogAction></AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
@@ -237,8 +243,8 @@ function Index() {
                     <AlertDialog>
                       <AlertDialogTrigger asChild><button aria-label={`Delete ${r.title}`} className="rounded border p-1.5 text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button></AlertDialogTrigger>
                       <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Delete "{r.title}"?</AlertDialogTitle><AlertDialogDescription>This removes the relic from this browser.</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => persist(relics.filter((x) => x.id !== r.id), "Relic deleted")}>Delete</AlertDialogAction></AlertDialogFooter>
+                        <AlertDialogHeader><AlertDialogTitle>Delete "{r.title}"?</AlertDialogTitle><AlertDialogDescription>This removes the relic from the public gallery for everyone.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => act(() => deleteRelic(r.id), "Relic deleted")}>Delete</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   </li>
@@ -270,7 +276,7 @@ function Index() {
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle className="font-mono text-sm uppercase tracking-widest">Save relic</DialogTitle>
-            <DialogDescription>{result && resultCode === code ? "Saves the code and its current report to this browser." : "Saves the code only — analyze it first to include a report."}</DialogDescription></DialogHeader>
+            <DialogDescription>{result && resultCode === code ? "Saves the code and its report to the public gallery — anyone can view it." : "Saves the code only to the public gallery — analyze it first to include a report."}</DialogDescription></DialogHeader>
           <label htmlFor="save-title" className={`${label} text-muted-foreground`}>Title</label>
           <input id="save-title" autoFocus maxLength={MAX_TITLE_CHARS} value={saveTitle} onChange={(e) => setSaveTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmSave()} className="w-full rounded-md border bg-panel px-3 py-2 font-mono text-sm outline-none focus:border-primary" />
           <DialogFooter><button onClick={confirmSave} className={`${label} rounded-md bg-primary px-4 py-2.5 font-bold text-primary-foreground`}>Save</button></DialogFooter>
